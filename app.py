@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd 
 import random  
 import plotly.graph_objects as go 
+import yfinance as yf 
 from finance import compound_interest 
 st.set_page_config(page_title="Wealth Growth Simulator", layout="wide") 
 st.title("Wealth Growth Simulator") 
@@ -79,3 +80,51 @@ sims = monte_carlo(start, monthly, net_rate, years, volatility, 200)
 mc = pd.DataFrame(sims) 
 chart_data = pd.DataFrame({"Best": mc.max(), "Median": mc.median(), "Worst": mc.min()}) 
 st.plotly_chart(money_chart(chart_data, x_title="Year"), use_container_width=True, config={"scrollZoom": True}) 
+
+INDEXES = {"S&P 500": "^GSPC", "NASDAQ": "^NDX"} 
+
+@st.cache_data
+def etf_growth(ticker, start_year, years, monthly): 
+    data = yf.download( 
+        ticker, 
+        start=f"{start_year}-01-01",
+        end=f"{start_year + years}-01-01",
+        interval="1mo", 
+        progress=False, 
+        auto_adjust=True,
+    ) 
+    prices = data["Close"].squeeze().dropna() 
+    units = 0.0 
+    total = 0.0 
+    balances = [] 
+    contributed = []
+    for price in prices: 
+        units += monthly / price 
+        total += monthly 
+        balances.append(units * price) 
+        contributed.append(total)
+    return list(prices.index), balances, contributed
+
+st.header("Index Fund Growth (Historical)") 
+c1, c2, c3 = st.columns(3) 
+etf_start = c1.number_input("Start year", 1986, 2025, 2000) 
+etf_years = c2.selectbox("Time period (years)", [10, 20, 30, 40]) 
+etf_monthly = c3.number_input("Monthly contribution (£)", value=100) 
+
+if etf_start + etf_years > 2026: 
+    st.warning("That period goes past today. Pick an earlier start year or a shoter period.") 
+else: 
+    results = {} 
+    for name, ticker in INDEXES.items(): 
+        dates, balances, contrib = etf_growth(ticker, etf_start, etf_years, etf_monthly) 
+        results[name] = pd.Series(balances, index=dates) 
+        contributions = pd.Series(contrib, index=dates) 
+    etf_df = pd.DataFrame(results) 
+    etf_df["Contributions"] = contributions 
+    cols = st.columns(len(INDEXES)) 
+    for col, name in zip(cols, INDEXES): 
+        col.metric(f"{name} final value", f"£{etf_df[name].iloc[-1]:,.0f}")
+    st.plotly_chart(money_chart(etf_df, x_title="Date"), use_container_width=True, config={"scrollZoom": True}) 
+    st.caption("Price index only: dividens aren't included, so real world returns would be a bit higher. Index values are in USD but shown as £ for simplicity.") 
+
+    
