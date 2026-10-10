@@ -25,7 +25,7 @@ def money_chart(df, x_title="Month", stacked=False):
     for col in df.columns: 
         fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col, stackgroup="one" if stacked else None, hovertemplate="%{fullData.name}: £%{y:,.0f}<extra></extra?")) 
     ymax = df.sum(axis=1).max() if stacked else df.max().max() 
-    fig.update_layout(hovermode="x unified", xaxis_title=x_title, yaxis_tickprefix="£") 
+    fig.update_layout(hovermode="x unified", xaxis_title=x_title, yaxis_tickprefix="£", dragmode="pan") 
     fig.update_xaxes(minallowed=df.index.min(), maxallowed=df.index.max()) 
     fig.update_yaxes(minallowed=0, maxallowed=ymax * 1.05) 
     return fig 
@@ -61,7 +61,7 @@ contributed = [start + monthly * m for m in range(len(history))]
 real_history = [b / (1 + inflation / 100) ** (m / 12) for m, b in enumerate(history)] 
 st.plotly_chart(money_chart(pd.DataFrame({"Balance": history, "Contributions": contributed, "Real Balance": real_history, "Alternative Rate": history2})), use_container_width=True)
 growth = [b - c for b, c in zip(history, contributed)] 
-st.plotly_chart(money_chart(pd.DataFrame({"Contributions": contributed, "Growth": growth}), stacked=True), use_container_width=True) 
+st.plotly_chart(money_chart(pd.DataFrame({"Contributions": contributed, "Growth": growth}), stacked=True), use_container_width=True, config={"scrollZoom": True})  
 
 yearly = pd.DataFrame({"Year": range(years + 1), "Balance": history[::12], "Contributed": contributed[::12], "Real Balance": real_history[::12]}) 
 with st.expander("Year-by-year table"): 
@@ -78,4 +78,4 @@ st.subheader("Monte Carlo Simulation")
 sims = monte_carlo(start, monthly, net_rate, years, volatility, 200) 
 mc = pd.DataFrame(sims) 
 chart_data = pd.DataFrame({"Best": mc.max(), "Median": mc.median(), "Worst": mc.min()}) 
-st.plotly_chart(money_chart(chart_data, x_title="Year"), use_container_width=True) 
+st.plotly_chart(money_chart(chart_data, x_title="Year"), use_container_width=True, config={"scrollZoom": True}) 
