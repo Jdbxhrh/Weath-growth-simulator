@@ -20,7 +20,7 @@ def monte_carlo(start, monthly, rate, years, volatility, runs):
         results.append(yearly)
     return results 
 
-def money_chart(df, x_title="Month", stacked=false)" 
+def money_chart(df, x_title="Month", stacked=False):
     fig = go.Figure() 
     for col in df.columns: 
         fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col, stackgroup="one" if stacked else None, hovertemplate="%{fullData.name}: £%{y:,.0f}<extra></extra?")) 
