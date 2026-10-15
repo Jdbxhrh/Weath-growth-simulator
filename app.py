@@ -21,17 +21,16 @@ def monte_carlo(start, monthly, rate, years, volatility, runs):
         results.append(yearly)
     return results 
 
-def money_chart(df, x_title="Month", stacked=False):
+def money_chart(df, x_title="Month", stacked=False, symbol="£"):
     fig = go.Figure() 
-    for col in df.columns: 
-        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col, stackgroup="one" if stacked else None, hovertemplate="%{fullData.name}: £%{y:,.0f}<extra></extra?")) 
+    for col in df.columns:   
+        fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col, stackgroup="one" if stacked else None, hovertemplate="%{fullData.name}: " + symbol + "%{y:,.0f}<extra></extra>"))
     ymax = df.sum(axis=1).max() if stacked else df.max().max() 
-    fig.update_layout(hovermode="x unified", xaxis_title=x_title, yaxis_tickprefix="£", dragmode="pan") 
+    fig.update_layout(hovermode="x unified", xaxis_title=x_title, yaxis_tickprefix=symbol, dragmode="pan") 
     fig.update_xaxes(minallowed=df.index.min(), maxallowed=df.index.max()) 
     fig.update_yaxes(minallowed=0, maxallowed=ymax * 1.05) 
     return fig 
 
-st.title("Wealth Growth Simulator")
 
 start = st.sidebar.number_input("Starting Amount (£):", value=1000) 
 monthly = st.sidebar.number_input("Monthly Contribution (£):", value=100) 
@@ -60,9 +59,9 @@ col4.metric("Total Growth", f"£{final - total_contributed:,.2f}")
 st.metric("Final Balance at comparison rate", f"£{final2:,.2f}", f"£{final2 - final:,.2f} vs your rate") 
 contributed = [start + monthly * m for m in range(len(history))]
 real_history = [b / (1 + inflation / 100) ** (m / 12) for m, b in enumerate(history)] 
-st.plotly_chart(money_chart(pd.DataFrame({"Balance": history, "Contributions": contributed, "Real Balance": real_history, "Alternative Rate": history2})), use_container_width=True)
+st.plotly_chart(money_chart(pd.DataFrame({"Balance": history, "Contributions": contributed, "Real Balance": real_history, "Alternative Rate": history2})), use_container_width=True, key="line_chart") 
 growth = [b - c for b, c in zip(history, contributed)] 
-st.plotly_chart(money_chart(pd.DataFrame({"Contributions": contributed, "Growth": growth}), stacked=True), use_container_width=True, config={"scrollZoom": True})  
+st.plotly_chart(money_chart(pd.DataFrame({"Contributions": contributed, "Growth": growth}), stacked=True), use_container_width=True, config={"scrollZoom": True}, key="area_chart")  
 
 yearly = pd.DataFrame({"Year": range(years + 1), "Balance": history[::12], "Contributed": contributed[::12], "Real Balance": real_history[::12]}) 
 with st.expander("Year-by-year table"): 
@@ -71,15 +70,15 @@ with st.expander("Year-by-year table"):
 goal = st.sidebar.number_input("Goal Amount(£):", value=50000) 
 months_needed = next((m for m, b in enumerate(history) if b >= goal), None) 
 if months_needed is None: 
-    st.warning("You won't reach this goal within the chosen year.") 
+    st.warning("You won't reach this goal within the chosen years.") 
 else:
-     st.success(f"You reach £{goal:,.0f} in {months_needed // 12} years and {months_needed % 12} months.")  
+     st.success(f"You reach £{goal:,.0f} in {months_needed // 12} years and {months_needed % 12} months.")
 
 st.subheader("Monte Carlo Simulation") 
 sims = monte_carlo(start, monthly, net_rate, years, volatility, 200) 
 mc = pd.DataFrame(sims) 
 chart_data = pd.DataFrame({"Best": mc.max(), "Median": mc.median(), "Worst": mc.min()}) 
-st.plotly_chart(money_chart(chart_data, x_title="Year"), use_container_width=True, config={"scrollZoom": True}) 
+st.plotly_chart(money_chart(chart_data, x_title="Year"), use_container_width=True, config={"scrollZoom": True}, key="mc_chart") 
 
 INDEXES = {"S&P 500": "^GSPC", "NASDAQ": "^NDX"} 
 
@@ -93,7 +92,9 @@ def etf_growth(ticker, start_year, years, monthly):
         progress=False, 
         auto_adjust=True,
     ) 
-    prices = data["Close"].squeeze().dropna() 
+    prices = data["Close"].squeeze().dropna()  
+    if prices.empty: 
+        raise ValueError("No data") 
     units = 0.0 
     total = 0.0 
     balances = [] 
@@ -109,22 +110,32 @@ st.header("Index Fund Growth (Historical)")
 c1, c2, c3 = st.columns(3) 
 etf_start = c1.number_input("Start year", 1986, 2025, 2000) 
 etf_years = c2.selectbox("Time period (years)", [10, 20, 30, 40]) 
-etf_monthly = c3.number_input("Monthly contribution (£)", value=100) 
+etf_monthly = c3.number_input("Monthly contribution ($)", value=100) 
 
 if etf_start + etf_years > 2026: 
-    st.warning("That period goes past today. Pick an earlier start year or a shoter period.") 
+    st.warning("That period goes past today. Pick an earlier start year or a shorter period.") 
 else: 
-    results = {} 
+    results = {}  
+    contributions = None
     for name, ticker in INDEXES.items(): 
-        dates, balances, contrib = etf_growth(ticker, etf_start, etf_years, etf_monthly) 
+        try: 
+            dates, balances, contrib = etf_growth(ticker, etf_start, etf_years, etf_monthly) 
+        except Exception as e: 
+            st.error(f"Couldn't download data for {name}: {e}")  
+            st.stop()
         results[name] = pd.Series(balances, index=dates) 
-        contributions = pd.Series(contrib, index=dates) 
+        if contributions is None: 
+            contributions = pd.Series(contrib, index=dates) 
     etf_df = pd.DataFrame(results) 
     etf_df["Contributions"] = contributions 
     cols = st.columns(len(INDEXES)) 
     for col, name in zip(cols, INDEXES): 
-        col.metric(f"{name} final value", f"£{etf_df[name].iloc[-1]:,.0f}")
-    st.plotly_chart(money_chart(etf_df, x_title="Date"), use_container_width=True, config={"scrollZoom": True}) 
-    st.caption("Price index only: dividens aren't included, so real world returns would be a bit higher. Index values are in USD but shown as £ for simplicity.") 
+        final_value = etf_df[name].dropna().iloc[-1]  
+        total_in = etf_df["Contributions"].dropna().iloc[-1] 
+        pct = (final_value - total_in) / total_in * 100 
+        col.metric(f"{name} final value", f"${final_value:,.0f}", f"{pct:,.0f}% return")  
+        col.caption(f"Total contributed: ${total_in:,.0f}")
+    st.plotly_chart(money_chart(etf_df, x_title="Date", symbol="$"), use_container_width=True, config={"scrollZoom": True}, key="etf_chart")  
+    st.caption("Price indexes only: dividends aren't included, so real world returns would be a bit higher. All values are in USD.")
 
     
